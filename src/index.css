@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  /* Charcoal base — replaces noozi's near-black with our warmer charcoal */
+  --color-charcoal: #202124;
+  --color-charcoal-2: #2a2b2f;
+  --color-charcoal-3: #35363b;
+
+  /* Brand blues, lifted from the Your Dream Builders "D" mark gradient */
+  --color-brand-sky: #5fd0ff;
+  --color-brand-blue: #2e9cf5;
+  --color-brand-deep: #1465c9;
+  --color-brand-navy: #101b3d;
+
+  /* Text on dark */
+  --color-ivory: #eef1f6;
+  --color-ivory-dim: #aab0c2;
+
+  --font-display: "Barlow Condensed", sans-serif;
+  --font-sans: "Poppins", system-ui, sans-serif;
+
+  --animate-marquee-up: marquee-up 34s linear infinite;
+  --animate-marquee-down: marquee-down 40s linear infinite;
+}
+
+@keyframes marquee-up {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes marquee-down {
+  from {
+    transform: translateY(-50%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+html {
+  background: var(--color-charcoal);
+  scroll-behavior: auto;
+}
+
+body {
+  background: var(--color-charcoal);
+  color: var(--color-ivory);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-brand-blue);
+  color: var(--color-charcoal);
+}
+
+/* custom cursor */
+.cursor-dot,
+.cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+
+.cursor-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--color-brand-sky);
+}
+
+.cursor-ring {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(95, 208, 255, 0.5);
+  transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+}
+
+.cursor-ring.is-active {
+  width: 60px;
+  height: 60px;
+  background: rgba(95, 208, 255, 0.08);
+  border-color: rgba(95, 208, 255, 0.8);
+}
+
+@media (hover: none) {
+  .cursor-dot,
+  .cursor-ring {
+    display: none;
+  }
+}
+
+.text-gradient-brand {
+  background: linear-gradient(115deg, var(--color-brand-sky), var(--color-brand-blue) 55%, var(--color-brand-deep));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
