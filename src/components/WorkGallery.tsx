@@ -20,20 +20,9 @@ const FADE_IN = 900; // ...and fade in over this distance
 const NEAR = 620; // photos fade out as they reach this (perspective is 1000px)
 const SCROLL_PER_PHOTO = 26; // vh of scrolling per photo
 
-// Phones get their own motion: the photos form a stack down the middle of the
-// screen. The front photo comes towards you, holds at full size (72vw) so it
-// can be looked at, then slides up off the top, uncovering the next one, which
-// was already growing behind it. Photos leave by moving, never by fading, so
-// nothing blinks -- and since every photo shares the same shape and centre, the
-// smaller ones behind are always fully covered by the one in front.
-const MOBILE = {
-  spacing: 700, // z distance between photos in the stack
-  start: 500, // how far back the first photo begins
-  hold: 250, // camera travel the front photo stays still at full size
-  exit: 400, // camera travel over which it slides up and away
-  depth: 2, // photos visible in the stack behind the front one
-  scrollPerPhoto: 40, // vh of scrolling per photo
-};
+// Phones show the photos as a two-column grid of tiles instead of the
+// fly-through: each tile swings in from a 3D tilt and flattens as it reaches
+// the middle of the screen, scrubbed to the scroll.
 
 // Where each photo flies past: side of the screen and vertical lane.
 const LANES = [
@@ -92,32 +81,6 @@ export default function WorkGallery() {
     const render = (progress: number) => {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      const mobile = w < 768;
-
-      if (mobile) {
-        const travel = (total - 1) * MOBILE.spacing + MOBILE.start + MOBILE.hold + MOBILE.exit;
-        const camera = progress * travel;
-        const cardH = cards[0]?.offsetHeight ?? 0;
-        cards.forEach((card, i) => {
-          const z = -MOBILE.start - i * MOBILE.spacing + camera;
-          // still approaching, holding at the front, or sliding away
-          const zShown = Math.min(z, 0);
-          const leaving = clamp01((z - MOBILE.hold) / MOBILE.exit);
-          const y = -leaving * leaving * (h / 2 + cardH / 2 + 60); // eases out of the top
-          const tooFar = -z > MOBILE.spacing * (MOBILE.depth + 0.5);
-          const gone = leaving >= 1;
-          // only the far end of the stack fades, so new photos appear gently
-          const opacity = gone || tooFar ? 0 : clamp01((MOBILE.spacing * (MOBILE.depth + 0.5) + z) / 300);
-          card.style.opacity = String(opacity);
-          card.style.visibility = opacity > 0 ? "visible" : "hidden";
-          card.style.pointerEvents = z > -150 && leaving < 0.3 ? "auto" : "none";
-          card.style.transform = `translate(-50%, -50%) translate3d(0px, ${y}px, ${zShown}px)`;
-          const shade = shades[i];
-          if (shade) shade.style.opacity = String(clamp01(-zShown / (MOBILE.spacing * 2)) * 0.6);
-        });
-        if (hintRef.current) hintRef.current.style.opacity = String(1 - clamp01(progress * 12));
-        return;
-      }
 
       const travel = (total - 1) * SPACING + START + NEAR;
       // how far off-centre each lane sits, in px at z = 0
@@ -155,7 +118,34 @@ export default function WorkGallery() {
     render(trigger.progress);
 
     return () => trigger.kill();
-  }, [photosKey, total, reducedMotion]);
+  }, [photosKey, total, reducedMotion, isMobile]);
+
+  // Phone tiles: 3D swing-in, scrubbed to scroll.
+  const tilesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const grid = tilesRef.current;
+    if (!grid || reducedMotion || !isMobile) return;
+    const ctx = gsap.context(() => {
+      gsap.utils.toArray<HTMLElement>(".work-tile", grid).forEach((tile, i) => {
+        const side = i % 2 === 0 ? 1 : -1; // left column swings one way, right the other
+        gsap.fromTo(
+          tile,
+          { rotationX: 38, rotationY: side * 22, y: 70, z: -160, scale: 0.88, autoAlpha: 0.35, transformPerspective: 900 },
+          {
+            rotationX: 0,
+            rotationY: 0,
+            y: 0,
+            z: 0,
+            scale: 1,
+            autoAlpha: 1,
+            ease: "power2.out",
+            scrollTrigger: { trigger: tile, start: "top bottom", end: "top 45%", scrub: 0.6 },
+          },
+        );
+      });
+    }, grid);
+    return () => ctx.revert();
+  }, [photosKey, reducedMotion, isMobile]);
 
   return (
     <section id="work" className="relative w-full bg-charcoal-2">
@@ -206,7 +196,32 @@ export default function WorkGallery() {
           ))}
         </div>
       ) : (
-        <div ref={tunnelRef} className="relative" style={{ height: `${100 + total * (isMobile ? MOBILE.scrollPerPhoto : SCROLL_PER_PHOTO)}vh` }}>
+        isMobile ? (
+        <div ref={tilesRef} className="relative mx-auto grid grid-cols-2 gap-3 px-4 pb-16 pt-12">
+          {workImages.map((src, i) => (
+            <button
+              key={src}
+              type="button"
+              aria-label={`Enlarge project ${i + 1}`}
+              onClick={() => setLightboxIndex(i)}
+              // right column sits a little lower for a staggered, less rigid grid
+              // (top, not translate -- the 3D animation owns `transform`)
+              className={`work-tile relative aspect-[4/5] overflow-hidden rounded-2xl bg-charcoal-3 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.8)] ring-1 ring-white/10 will-change-transform ${
+                i % 2 === 1 ? "top-10" : ""
+              }`}
+            >
+              <img
+                src={src}
+                alt={`Your Dream Builders project ${i + 1}`}
+                loading="lazy"
+                draggable={false}
+                className="h-full w-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+        ) : (
+        <div ref={tunnelRef} className="relative" style={{ height: `${100 + total * SCROLL_PER_PHOTO}vh` }}>
           <div className="sticky top-0 h-svh overflow-hidden [perspective:1000px]">
             {/* depth glow: a pool of brand light at the vanishing point */}
             <div
@@ -257,6 +272,7 @@ export default function WorkGallery() {
             </div>
           </div>
         </div>
+        )
       )}
 
       {total > 0 && (
