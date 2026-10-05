@@ -5,6 +5,15 @@ const PASSWORD_KEY = "ydb-update-password";
 
 type Category = "Exterior" | "Interior";
 
+interface Client {
+  id: string;
+  name: string;
+  location: string;
+  quote: string;
+  url: string;
+  order: number;
+}
+
 interface Photo {
   id: string;
   title: string;
@@ -27,6 +36,30 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// Vercel rejects request bodies over ~4.5 MB, and base64 adds a third on top,
+// so full-size phone photos would fail. Shrink to a sensible web size first.
+const MAX_IMAGE_EDGE = 2000;
+
+async function prepareImage(file: File): Promise<{ base64: string; type: string }> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (blob) {
+      const base64 = await fileToBase64(new File([blob], "photo.jpg", { type: "image/jpeg" }));
+      return { base64, type: "image/jpeg" };
+    }
+  } catch {
+    // Browser couldn't decode it (e.g. some HEIC files) -- fall back to the original.
+  }
+  return { base64: await fileToBase64(file), type: file.type };
+}
+
 async function callApi(path: string, password: string, body: Record<string, unknown>) {
   const res = await fetch(path, {
     method: "POST",
@@ -35,7 +68,7 @@ async function callApi(path: string, password: string, body: Record<string, unkn
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Something went wrong");
-  return data as { photos: Photo[] };
+  return data;
 }
 
 function LockIcon() {
@@ -88,10 +121,10 @@ function PasswordGate({ onUnlock }: { onUnlock: (password: string) => void }) {
       <form onSubmit={submit} className="relative z-10 flex w-full max-w-md flex-col items-center">
         {logoImage && <img src={logoImage} alt="Your Dream Builders" className="mb-6 h-14 w-auto" />}
         <h1 className="text-center font-display text-3xl font-black uppercase tracking-tight text-ivory">
-          Update Work Photos
+          Update Website Photos
         </h1>
         <p className="mt-2 mb-8 text-center font-sans text-sm text-ivory-dim">
-          Enter the password to add, replace, or remove project photos.
+          Enter the password to manage project photos and happy-client handovers.
         </p>
 
         <div className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 backdrop-blur-md">
@@ -129,14 +162,14 @@ function PhotoCard({ photo, password, onChanged }: { photo: Photo; password: str
     setBusy(true);
     setError("");
     try {
-      const imageBase64 = await fileToBase64(file);
+      const image = await prepareImage(file);
       const data = await callApi("/api/upload", password, {
         id: photo.id,
         title: photo.title,
         category: photo.category,
         location: photo.location,
-        imageBase64,
-        imageType: file.type,
+        imageBase64: image.base64,
+        imageType: image.type,
       });
       onChanged(data.photos);
     } catch (err) {
@@ -207,13 +240,13 @@ function AddPhotoForm({ password, onChanged }: { password: string; onChanged: (p
     setBusy(true);
     setError("");
     try {
-      const imageBase64 = await fileToBase64(file);
+      const image = await prepareImage(file);
       const data = await callApi("/api/upload", password, {
         title: title.trim(),
         category,
         location: location.trim(),
-        imageBase64,
-        imageType: file.type,
+        imageBase64: image.base64,
+        imageType: image.type,
       });
       onChanged(data.photos);
       setTitle("");
@@ -226,9 +259,6 @@ function AddPhotoForm({ password, onChanged }: { password: string; onChanged: (p
       setBusy(false);
     }
   };
-
-  const inputClass =
-    "w-full rounded-lg border border-white/12 bg-white/5 px-3.5 py-3 font-sans text-sm text-ivory outline-none placeholder:text-ivory-dim/50 focus:border-brand-blue/50";
 
   return (
     <form
@@ -258,7 +288,7 @@ function AddPhotoForm({ password, onChanged }: { password: string; onChanged: (p
         type="file"
         accept="image/*"
         onChange={(e) => setFile(e.target.files?.[0] || null)}
-        className={`${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:font-sans file:text-xs file:font-semibold file:text-ivory`}
+        className={fileInputClass}
       />
       {error && <p className="font-sans text-xs text-red-400">{error}</p>}
       <button
@@ -272,16 +302,308 @@ function AddPhotoForm({ password, onChanged }: { password: string; onChanged: (p
   );
 }
 
+const inputClass =
+  "w-full rounded-lg border border-white/12 bg-white/5 px-3.5 py-3 font-sans text-sm text-ivory outline-none placeholder:text-ivory-dim/50 focus:border-brand-blue/50";
+const fileInputClass = `${inputClass} file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:font-sans file:text-xs file:font-semibold file:text-ivory`;
+
+const sortByOrder = <T extends { order: number }>(items: T[]) => [...items].sort((a, b) => a.order - b.order);
+
+/** Name / location / testimonial inputs, shared by the add form and the edit card. */
+function ClientFields({
+  name,
+  location,
+  quote,
+  onChange,
+}: {
+  name: string;
+  location: string;
+  quote: string;
+  onChange: (field: "name" | "location" | "quote", value: string) => void;
+}) {
+  return (
+    <>
+      <input
+        type="text"
+        placeholder="Client name (e.g. Rajesh & Family)"
+        value={name}
+        maxLength={80}
+        onChange={(e) => onChange("name", e.target.value)}
+        className={inputClass}
+      />
+      <input
+        type="text"
+        placeholder="Location / project (optional)"
+        value={location}
+        maxLength={80}
+        onChange={(e) => onChange("location", e.target.value)}
+        className={inputClass}
+      />
+      <textarea
+        placeholder="Testimonial in the client's words (optional)"
+        value={quote}
+        maxLength={600}
+        rows={4}
+        onChange={(e) => onChange("quote", e.target.value)}
+        className={`${inputClass} resize-y`}
+      />
+    </>
+  );
+}
+
+function AddClientForm({ password, onChanged }: { password: string; onChanged: (clients: Client[]) => void }) {
+  const [fields, setFields] = useState({ name: "", location: "", quote: "" });
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (!file || !fields.name.trim()) {
+      setError("Add the client's name and choose a handover photo");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const image = await prepareImage(file);
+      const data = await callApi("/api/clients", password, {
+        ...fields,
+        imageBase64: image.base64,
+        imageType: image.type,
+      });
+      onChanged(sortByOrder(data.clients));
+      setFields({ name: "", location: "", quote: "" });
+      setFile(null);
+      form.reset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mx-auto flex max-w-lg flex-col gap-3 rounded-2xl border border-white/10 bg-charcoal-2 p-7"
+    >
+      <h2 className="mb-1 font-display text-xl font-bold uppercase tracking-tight text-ivory">Add a Key Handover</h2>
+      <ClientFields {...fields} onChange={(field, value) => setFields((f) => ({ ...f, [field]: value }))} />
+      <label className="font-sans text-xs text-ivory-dim">
+        Handover photo
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          className={`${fileInputClass} mt-1.5`}
+        />
+      </label>
+      {error && <p className="font-sans text-xs text-red-400">{error}</p>}
+      <button
+        type="submit"
+        disabled={busy}
+        className="mt-1 rounded-lg bg-gradient-to-r from-brand-sky to-brand-blue py-3 font-sans text-sm font-bold text-charcoal transition-transform hover:scale-[1.01] disabled:opacity-60"
+      >
+        {busy ? "Uploading…" : "Add Handover"}
+      </button>
+    </form>
+  );
+}
+
+function ClientCard({
+  client,
+  password,
+  onChanged,
+}: {
+  client: Client;
+  password: string;
+  onChanged: (clients: Client[]) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [fields, setFields] = useState({ name: client.name, location: client.location, quote: client.quote });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const run = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await callApi("/api/clients", password, { id: client.id, ...body });
+      onChanged(sortByOrder(data.clients));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const replacePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    const image = await prepareImage(file);
+    await run({ ...fields, imageBase64: image.base64, imageType: image.type });
+    input.value = "";
+  };
+
+  const save = async () => {
+    if (await run(fields)) setEditing(false);
+  };
+
+  const remove = async () => {
+    if (!confirm(`Remove "${client.name}"? This can't be undone.`)) return;
+    await run({ action: "delete" });
+  };
+
+  const buttonClass =
+    "flex-1 rounded-full border border-white/15 py-2 text-center font-sans text-xs font-bold transition-colors hover:bg-white/5 disabled:opacity-50";
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-charcoal-2">
+      <img src={client.url} alt={client.name} className="h-48 w-full object-cover" />
+      <div className="flex flex-col gap-3 p-4">
+        {editing ? (
+          <ClientFields {...fields} onChange={(field, value) => setFields((f) => ({ ...f, [field]: value }))} />
+        ) : (
+          <div>
+            <div className="font-sans text-sm font-bold text-ivory">{client.name}</div>
+            {client.location && <div className="font-sans text-xs text-ivory-dim">{client.location}</div>}
+            <p className="mt-2 line-clamp-4 font-sans text-xs italic leading-relaxed text-ivory-dim">
+              {client.quote ? `“${client.quote}”` : "No testimonial yet"}
+            </p>
+          </div>
+        )}
+        <div className="flex gap-2">
+          {editing ? (
+            <>
+              <button onClick={save} disabled={busy} className={`${buttonClass} text-brand-sky`}>
+                {busy ? "Saving…" : "Save"}
+              </button>
+              <button
+                onClick={() => {
+                  setFields({ name: client.name, location: client.location, quote: client.quote });
+                  setEditing(false);
+                }}
+                disabled={busy}
+                className={`${buttonClass} text-ivory`}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setEditing(true)} disabled={busy} className={`${buttonClass} text-ivory`}>
+                Edit
+              </button>
+              <label className={`${buttonClass} cursor-pointer text-ivory ${busy ? "pointer-events-none opacity-50" : ""}`}>
+                Photo
+                <input type="file" accept="image/*" onChange={replacePhoto} disabled={busy} className="hidden" />
+              </label>
+              <button onClick={remove} disabled={busy} className={`${buttonClass} text-red-400`}>
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+        {error && <p className="font-sans text-xs text-red-400">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** On/off switch for showing the whole Happy Clients section on the live site. */
+function SectionToggle({
+  enabled,
+  hasEntries,
+  password,
+  onChanged,
+}: {
+  enabled: boolean;
+  hasEntries: boolean;
+  password: string;
+  onChanged: (enabled: boolean) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggle = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await callApi("/api/clients", password, { action: "setEnabled", enabled: !enabled });
+      onChanged(data.enabled);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const status = !enabled
+    ? "Hidden — the Happy Clients section is not shown on the website."
+    : hasEntries
+      ? "Live — the Happy Clients section is shown on the website."
+      : "Switched on, but it will only appear once you add a handover below.";
+
+  return (
+    <div className="mx-auto mb-8 flex max-w-lg items-center justify-between gap-5 rounded-2xl border border-white/10 bg-charcoal-2 p-5">
+      <div>
+        <p className="font-display text-lg font-bold uppercase tracking-tight text-ivory">Show on website</p>
+        <p className={`mt-0.5 font-sans text-xs ${enabled && hasEntries ? "text-emerald-400" : "text-ivory-dim"}`}>
+          {status}
+        </p>
+        {error && <p className="mt-1 font-sans text-xs text-red-400">{error}</p>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label="Show the Happy Clients section on the website"
+        onClick={toggle}
+        disabled={busy}
+        className={`relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+          enabled ? "bg-emerald-500" : "bg-white/15"
+        }`}
+      >
+        <span
+          className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+            enabled ? "translate-x-6" : ""
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 export default function UpdatePage() {
   const [password, setPassword] = useState(() => sessionStorage.getItem(PASSWORD_KEY) || "");
+  const [tab, setTab] = useState<"work" | "clients">("work");
   const [photos, setPhotos] = useState<Photo[] | null>(null);
+  const [clients, setClients] = useState<Client[] | null>(null);
+  const [clientsEnabled, setClientsEnabled] = useState(false);
 
   useEffect(() => {
     fetch("/api/photos")
       .then((r) => r.json())
-      .then((data: Photo[]) => setPhotos([...data].sort((a, b) => a.order - b.order)))
+      .then((data: Photo[]) => setPhotos(sortByOrder(data)))
       .catch(() => setPhotos([]));
   }, []);
+
+  // With the password, the API returns every entry even while the section is
+  // switched off, so they can be prepared before going public.
+  useEffect(() => {
+    if (!password) return;
+    fetch("/api/clients", { headers: { "x-update-password": password } })
+      .then((r) => r.json())
+      .then((data: { enabled: boolean; clients: Client[] }) => {
+        setClients(sortByOrder(data.clients));
+        setClientsEnabled(data.enabled);
+      })
+      .catch(() => setClients([]));
+  }, [password]);
 
   if (!password) return <PasswordGate onUnlock={setPassword} />;
 
@@ -289,6 +611,11 @@ export default function UpdatePage() {
     sessionStorage.removeItem(PASSWORD_KEY);
     setPassword("");
   };
+
+  const tabClass = (active: boolean) =>
+    `rounded-full px-5 py-2.5 font-sans text-xs font-bold uppercase tracking-wide transition-colors ${
+      active ? "bg-gradient-to-r from-brand-sky to-brand-blue text-charcoal" : "text-ivory-dim hover:text-ivory"
+    }`;
 
   return (
     <div className="min-h-screen bg-charcoal">
@@ -301,22 +628,57 @@ export default function UpdatePage() {
 
       <div className="mx-auto max-w-5xl px-6 py-12">
         {logoImage && <img src={logoImage} alt="Your Dream Builders" className="mb-4 h-9 w-auto" />}
-        <h1 className="font-display text-3xl font-black uppercase tracking-tight text-ivory">Update Work Photos</h1>
-        <p className="mt-1.5 mb-9 font-sans text-sm text-ivory-dim">
-          Changes here update the site&rsquo;s work gallery immediately — no waiting.
+        <h1 className="font-display text-3xl font-black uppercase tracking-tight text-ivory">Update Website Photos</h1>
+        <p className="mt-1.5 font-sans text-sm text-ivory-dim">
+          Changes here go live on the site immediately — no waiting.
         </p>
 
-        <AddPhotoForm password={password} onChanged={setPhotos} />
-
-        <div className="mt-10 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-          {photos === null && <p className="font-sans text-sm text-ivory-dim">Loading…</p>}
-          {photos?.length === 0 && (
-            <p className="font-sans text-sm text-ivory-dim">No photos yet — add your first one above.</p>
-          )}
-          {photos?.map((photo) => (
-            <PhotoCard key={photo.id} photo={photo} password={password} onChanged={setPhotos} />
-          ))}
+        <div className="mt-7 mb-9 inline-flex gap-1 rounded-full border border-white/10 bg-charcoal-2 p-1">
+          <button onClick={() => setTab("work")} className={tabClass(tab === "work")}>
+            Work Photos
+          </button>
+          <button onClick={() => setTab("clients")} className={tabClass(tab === "clients")}>
+            Happy Clients
+          </button>
         </div>
+
+        {tab === "work" ? (
+          <>
+            <AddPhotoForm password={password} onChanged={setPhotos} />
+            <div className="mt-10 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+              {photos === null && <p className="font-sans text-sm text-ivory-dim">Loading…</p>}
+              {photos?.length === 0 && (
+                <p className="font-sans text-sm text-ivory-dim">No photos yet — add your first one above.</p>
+              )}
+              {photos?.map((photo) => (
+                <PhotoCard key={photo.id} photo={photo} password={password} onChanged={setPhotos} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <SectionToggle
+              enabled={clientsEnabled}
+              hasEntries={(clients?.length ?? 0) > 0}
+              password={password}
+              onChanged={setClientsEnabled}
+            />
+            <p className="mx-auto mb-6 max-w-lg font-sans text-sm text-ivory-dim">
+              Add a photo from each key handover, with the client&rsquo;s name and, if they&rsquo;re happy to share
+              it, a few words about working with you.
+            </p>
+            <AddClientForm password={password} onChanged={setClients} />
+            <div className="mt-10 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+              {clients === null && <p className="font-sans text-sm text-ivory-dim">Loading…</p>}
+              {clients?.length === 0 && (
+                <p className="font-sans text-sm text-ivory-dim">No handovers yet — add your first one above.</p>
+              )}
+              {clients?.map((client) => (
+                <ClientCard key={client.id} client={client} password={password} onChanged={setClients} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
