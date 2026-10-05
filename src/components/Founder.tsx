@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import ScrollTrigger from "gsap/ScrollTrigger";
 import { founderImage } from "../data/media";
+import { BUSINESS } from "../data/business";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -54,12 +55,23 @@ export default function Founder() {
             <span className="text-gradient-brand">Mohan</span>
           </h2>
 
-          <p className="founder-reveal mt-8 max-w-xl font-sans text-base leading-relaxed text-ivory-dim md:text-lg">
-            Aswin founded Your Dream Builders on a simple promise — every home should be built with the same
-            care the family living in it deserves. Under his leadership, the studio has grown into a trusted
-            design-and-build partner across Pathanamthitta district, recognized for quality construction and dependable
-            delivery.
-          </p>
+          {/* founder's note, approved wording */}
+          <blockquote className="founder-reveal mt-8 max-w-xl">
+            <span aria-hidden className="block font-display text-6xl leading-none text-brand-sky/70">
+              &ldquo;
+            </span>
+            <p className="-mt-4 font-sans text-base leading-relaxed text-ivory/90 md:text-lg">
+              When we started Your Dream in {BUSINESS.established}, we made ourselves one promise: every
+              family who trusts us with their home should feel proud on the day we hand over the keys. More than{" "}
+              {BUSINESS.projectsCompleted} projects later, that promise still guides every decision we make. For
+              us, the best part of this work is not the building itself, but the smile on a family&rsquo;s face
+              when they step into their new home.
+            </p>
+            <footer className="mt-5 font-sans text-sm text-ivory-dim">
+              &mdash; <span className="font-semibold text-ivory">Aswin Parackal Mohan</span>, Founder &amp;
+              Managing Director
+            </footer>
+          </blockquote>
 
           <div className="founder-reveal mt-10 flex flex-col gap-3">
             {AWARDS.map((award) => (
