@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "seed:work": "node scripts/seed-work-photos.mjs"
+    "seed:work": "node scripts/seed-work-photos.mjs",
+    "seed:clients": "node --env-file=.env.local scripts/seed-happy-clients.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",

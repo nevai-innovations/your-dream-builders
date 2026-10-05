@@ -20,6 +20,18 @@
   --font-sans: "Poppins", system-ui, sans-serif;
 }
 
+/* Happy Clients: the featured testimonial fades in as the ring turns */
+@keyframes client-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 html {
   background: var(--color-charcoal);
   scroll-behavior: auto;

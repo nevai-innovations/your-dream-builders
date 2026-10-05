@@ -5,6 +5,10 @@ import Lightbox from "./Lightbox";
 
 gsap.registerPlugin(ScrollTrigger);
 
+const SPEED = 70; // px per second the photos travel from right to left
+const CARD_GAP = 40; // px between neighbouring cards
+const CARD_RATIO = 0.72; // height / width -- landscape, since handover photos are group shots
+
 interface Client {
   id: string;
   name: string;
@@ -22,7 +26,13 @@ interface Client {
 export default function HappyClients() {
   const [clients, setClients] = useState<Client[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [frontIndex, setFrontIndex] = useState(0); // client currently passing the centre
+  const [cardW, setCardW] = useState(400);
+  const [viewW, setViewW] = useState(1440);
   const sectionRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const hoveredRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,7 +80,91 @@ export default function HappyClients() {
     return () => ctx.revert();
   }, [count]);
 
+  // Card size follows the screen width.
+  useEffect(() => {
+    const update = () => {
+      setViewW(window.innerWidth);
+      setCardW(window.innerWidth < 768 ? 250 : 400);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // A continuous stream: enough cards (repeating entries if needed) to span
+  // the screen plus one card off each edge, so a card is always entering on
+  // the right while another leaves on the left.
+  const spacing = cardW + CARD_GAP;
+  // Whole copies of the list only, so the same client never appears twice in a row.
+  const minSlots = Math.ceil(viewW / spacing) + 3;
+  const slots = count === 0 ? 0 : count * Math.ceil(minSlots / count);
+  const stream = Array.from({ length: slots }, (_, i) => clients[i % count]);
+  const loop = slots * spacing; // one full cycle of the stream, in px
+
+  // Photos travel in a straight line from the right edge to the left edge.
+  // Each one swings in depth as it goes -- angled in on the right, flat and
+  // forward at the centre, angled away on the left -- for the 3D feel.
+  // Pauses on hover, while off screen, and for reduced-motion users.
+  useEffect(() => {
+    const track = trackRef.current;
+    const stage = stageRef.current;
+    if (!track || !stage || slots === 0) return;
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const cards = Array.from(track.querySelectorAll<HTMLElement>(".stream-card"));
+    const shades = cards.map((c) => c.querySelector<HTMLElement>(".stream-shade"));
+    const half = viewW / 2;
+    let onScreen = false;
+    let offset = 0;
+    let last = performance.now();
+    let lastCentre = -1;
+    let raf = 0;
+
+    const observer = new IntersectionObserver(([entry]) => (onScreen = entry.isIntersecting));
+    observer.observe(stage);
+
+    const frame = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      if (onScreen && !hoveredRef.current && !reduced) offset = (offset + SPEED * dt) % loop;
+
+      let centre = 0;
+      let nearest = Infinity;
+      cards.forEach((card, i) => {
+        // x relative to the screen centre, wrapped so cards re-enter on the right
+        let x = i * spacing - offset;
+        x = ((((x + loop / 2) % loop) + loop) % loop) - loop / 2;
+        const p = Math.max(-1.4, Math.min(1.4, x / half)); // -1 left edge, 0 centre, 1 right edge
+        card.style.transform =
+          `translate(-50%, -50%) translateX(${x}px) translateZ(${-Math.abs(p) * 260}px) ` +
+          `rotateY(${-p * 38}deg)`;
+        const shade = shades[i];
+        if (shade) shade.style.opacity = String(Math.min(0.7, Math.abs(p) * 0.55));
+        card.style.zIndex = String(100 - Math.round(Math.abs(p) * 50));
+        if (Math.abs(x) < nearest) {
+          nearest = Math.abs(x);
+          centre = i;
+        }
+      });
+
+      const centreClient = centre % count;
+      if (centreClient !== lastCentre) {
+        lastCentre = centreClient;
+        setFrontIndex(centreClient);
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [slots, spacing, loop, viewW, count]);
+
   if (count === 0) return null;
+
+  const featured = clients[frontIndex] ?? clients[0];
 
   return (
     <section id="clients" ref={sectionRef} className="relative w-full overflow-hidden bg-charcoal py-28 md:py-36">
@@ -92,54 +186,81 @@ export default function HappyClients() {
           </p>
         </div>
 
-        <div
-          className={`mt-14 grid gap-6 md:mt-20 ${
-            count === 1 ? "mx-auto max-w-md" : count === 2 ? "md:grid-cols-2" : "md:grid-cols-2 lg:grid-cols-3"
-          }`}
-        >
-          {clients.map((client, i) => (
-            <figure
-              key={client.id}
-              className="client-reveal group flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-charcoal-2 shadow-[0_40px_80px_-40px_rgba(0,0,0,0.8)]"
-            >
-              <button
-                type="button"
-                data-cursor-hover
-                aria-label={`Enlarge handover photo: ${client.name}`}
-                onClick={() => setLightboxIndex(i)}
-                className="relative aspect-[4/5] overflow-hidden"
-              >
-                <img
-                  src={client.url}
-                  alt={`Key handover — ${client.name}`}
-                  loading="lazy"
-                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                />
-                <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-charcoal/70 px-3 py-1.5 font-sans text-[10px] font-semibold uppercase tracking-[0.2em] text-ivory backdrop-blur-md">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden className="text-brand-sky">
-                    <circle cx="8" cy="15" r="4" stroke="currentColor" strokeWidth="2" />
-                    <path d="m10.8 12.2 8.7-8.7M16 7l2.5 2.5M14 9l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                  Key Handover
-                </span>
-              </button>
+      </div>
 
-              <figcaption className="flex flex-1 flex-col p-6 md:p-7">
-                {client.quote && (
-                  <blockquote className="relative flex-1 font-sans text-[15px] leading-relaxed text-ivory/90">
-                    <span aria-hidden className="block font-display text-5xl leading-none text-brand-sky/70">
-                      &ldquo;
-                    </span>
-                    <p className="-mt-3">{client.quote}</p>
-                  </blockquote>
+      {/* handover photos streaming right to left, with 3D depth */}
+      <div
+        ref={stageRef}
+        className="client-reveal relative mt-14 select-none md:mt-20"
+        style={{ height: cardW * CARD_RATIO + 80, perspective: 1600 }}
+        onPointerEnter={(e) => e.pointerType === "mouse" && (hoveredRef.current = true)}
+        onPointerLeave={() => (hoveredRef.current = false)}
+      >
+        <div
+          ref={trackRef}
+          className="absolute inset-0 [transform-style:preserve-3d]"
+        >
+          {stream.map((client, i) => (
+            <button
+              key={`${client.id}-${i}`}
+              type="button"
+              data-cursor-hover
+              aria-label={`Enlarge handover photo: ${client.name}`}
+              onClick={() => setLightboxIndex(i % count)}
+              className="stream-card group absolute left-1/2 top-1/2 overflow-hidden rounded-3xl bg-charcoal-2 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10 will-change-transform"
+              style={{
+                width: cardW,
+                height: cardW * CARD_RATIO,
+                // start off-screen right; the animation loop positions them
+                transform: `translate(-50%, -50%) translateX(${viewW}px)`,
+              }}
+            >
+              <img
+                src={client.url}
+                alt={`Key handover — ${client.name}`}
+                draggable={false}
+                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+              />
+              <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-charcoal/90 via-charcoal/40 to-transparent px-4 pb-4 pt-12 text-left">
+                <span className="block font-display text-lg font-bold uppercase leading-tight tracking-tight text-ivory md:text-xl">
+                  {client.name}
+                </span>
+                {client.location && (
+                  <span className="mt-0.5 block font-sans text-[11px] text-ivory-dim">{client.location}</span>
                 )}
-                <div className={client.quote ? "mt-6 border-t border-white/10 pt-5" : ""}>
-                  <p className="font-display text-xl font-bold uppercase tracking-tight text-ivory">{client.name}</p>
-                  {client.location && <p className="mt-0.5 font-sans text-sm text-ivory-dim">{client.location}</p>}
-                </div>
-              </figcaption>
-            </figure>
+              </span>
+              <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-charcoal/70 px-2.5 py-1 font-sans text-[9px] font-semibold uppercase tracking-[0.2em] text-ivory backdrop-blur-md">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden className="text-brand-sky">
+                  <circle cx="8" cy="15" r="4" stroke="currentColor" strokeWidth="2" />
+                  <path d="m10.8 12.2 8.7-8.7M16 7l2.5 2.5M14 9l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Key Handover
+              </span>
+              {/* darkens cards as they angle away towards the screen edges */}
+              <span aria-hidden className="stream-shade pointer-events-none absolute inset-0 bg-charcoal" />
+            </button>
           ))}
+        </div>
+      </div>
+
+      {/* testimonial of whichever client is passing the centre */}
+      <div
+        className={`relative mx-auto mt-10 max-w-2xl px-6 text-center md:mt-14 ${
+          // only reserve room for quotes once at least one entry has one
+          clients.some((c) => c.quote) ? "min-h-[11rem]" : "min-h-[4rem]"
+        }`}
+      >
+        <div key={featured.id} className="animate-[client-fade_0.6s_ease-out]">
+          {featured.quote && (
+            <blockquote className="font-sans text-base leading-relaxed text-ivory/90 md:text-lg">
+              <span aria-hidden className="block font-display text-6xl leading-none text-brand-sky/70">
+                &ldquo;
+              </span>
+              <p className="-mt-4">{featured.quote}</p>
+            </blockquote>
+          )}
+          <p className="mt-5 font-display text-xl font-bold uppercase tracking-tight text-ivory">{featured.name}</p>
+          {featured.location && <p className="font-sans text-sm text-ivory-dim">{featured.location}</p>}
         </div>
       </div>
 
