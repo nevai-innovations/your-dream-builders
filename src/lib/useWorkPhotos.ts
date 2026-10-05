@@ -19,17 +19,30 @@ export function useWorkPhotos(): string[] {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/photos")
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: CmsPhoto[]) => {
-        if (cancelled || !Array.isArray(data) || data.length === 0) return;
-        setCmsImages([...data].sort((a, b) => a.order - b.order).map((p) => p.url));
-      })
-      .catch(() => {
-        // no CMS available (or nothing uploaded yet) -- keep the static fallback
-      });
+    const load = () => {
+      fetch("/api/photos", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data: CmsPhoto[]) => {
+          if (cancelled || !Array.isArray(data) || data.length === 0) return;
+          const next = [...data].sort((a, b) => a.order - b.order).map((p) => p.url);
+          // only re-render when the list actually changed
+          setCmsImages((prev) => (prev && prev.join("\n") === next.join("\n") ? prev : next));
+        })
+        .catch(() => {
+          // no CMS available (or nothing uploaded yet) -- keep the static fallback
+        });
+    };
+    load();
+
+    // Pick up changes made in /update when the visitor comes back to this tab,
+    // without a manual refresh. (Not polling: every check costs a Blob request.)
+    const onVisible = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, []);
 

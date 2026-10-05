@@ -47,19 +47,30 @@ export default function HappyClients() {
         cancelled = true;
       };
     }
-    fetch("/api/clients")
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: { enabled: boolean; clients: Client[] }) => {
-        // shown only when switched on in the /update portal (and entries exist)
-        if (!cancelled && data.enabled && Array.isArray(data.clients)) {
-          setClients([...data.clients].sort((a, b) => a.order - b.order));
-        }
-      })
-      .catch(() => {
-        // API unavailable (e.g. plain `vite dev`) -- the section simply stays hidden
-      });
+    const load = () => {
+      fetch("/api/clients", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data: { enabled: boolean; clients: Client[] }) => {
+          if (cancelled || !Array.isArray(data.clients)) return;
+          // shown only when switched on in the /update portal (and entries exist)
+          const next = data.enabled ? [...data.clients].sort((a, b) => a.order - b.order) : [];
+          setClients((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+        })
+        .catch(() => {
+          // API unavailable (e.g. plain `vite dev`) -- the section simply stays hidden
+        });
+    };
+    load();
+
+    // Pick up changes from /update (entries, on/off switch) when the visitor
+    // returns to this tab, without a manual refresh.
+    const onVisible = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
   }, []);
 

@@ -76,6 +76,19 @@ export default async function handler(req, res) {
     res.status(400).json({ error: "Add the client's name" });
     return;
   }
+  // Reject values made only of symbols (e.g. "@#$%"); \p{L} = letters in any script.
+  if (!/\p{L}/u.test(name)) {
+    res.status(400).json({ error: "Client name must include letters, not just symbols" });
+    return;
+  }
+  if (location && !/[\p{L}\p{N}]/u.test(location)) {
+    res.status(400).json({ error: "Location must include letters or numbers, not just symbols" });
+    return;
+  }
+  if (quote && !/\p{L}/u.test(quote)) {
+    res.status(400).json({ error: "Testimonial must include words, not just symbols" });
+    return;
+  }
   if (!existing && !imageBase64) {
     res.status(400).json({ error: "Choose a handover photo" });
     return;

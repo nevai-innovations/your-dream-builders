@@ -60,6 +60,60 @@ async function prepareImage(file: File): Promise<{ base64: string; type: string 
   return { base64: await fileToBase64(file), type: file.type };
 }
 
+/**
+ * In-page "are you sure?" for deletes. Replaces the browser's confirm() popup,
+ * which many browsers title "JavaScript" -- QA read that as an error (Bug 1).
+ */
+function DeleteConfirm({
+  label,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  label: string;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div role="alertdialog" aria-label={`Delete ${label}?`} className="rounded-xl border border-red-400/30 bg-red-400/[0.06] p-3">
+      <p className="font-sans text-xs text-ivory">
+        Delete <span className="font-bold">{label}</span>? This can&rsquo;t be undone.
+      </p>
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={busy}
+          className="flex-1 rounded-full bg-red-500 py-2 font-sans text-xs font-bold text-white transition-colors hover:bg-red-400 disabled:opacity-50"
+        >
+          {busy ? "Deleting…" : "Delete"}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="flex-1 rounded-full border border-white/15 py-2 font-sans text-xs font-bold text-ivory transition-colors hover:bg-white/5 disabled:opacity-50"
+        >
+          Keep
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Text fields must contain real words, not just symbols like "@#$%" (Bug 2).
+// \p{L} accepts letters in any script, including Malayalam.
+const hasLetters = (value: string) => /\p{L}/u.test(value);
+const hasLettersOrNumbers = (value: string) => /[\p{L}\p{N}]/u.test(value);
+
+function validateClient(fields: { name: string; location: string; quote: string }) {
+  if (!fields.name.trim()) return "Add the client's name";
+  if (!hasLetters(fields.name)) return "Client name must include letters, not just symbols";
+  if (fields.location.trim() && !hasLettersOrNumbers(fields.location))
+    return "Location must include letters or numbers, not just symbols";
+  if (fields.quote.trim() && !hasLetters(fields.quote)) return "Testimonial must include words, not just symbols";
+  return "";
+}
+
 async function callApi(path: string, password: string, body: Record<string, unknown>) {
   const res = await fetch(path, {
     method: "POST",
@@ -180,14 +234,16 @@ function PhotoCard({ photo, password, onChanged }: { photo: Photo; password: str
     }
   };
 
+  const [confirming, setConfirming] = useState(false);
+
   const remove = async () => {
-    if (!confirm(`Remove "${photo.title}"? This can't be undone.`)) return;
     setBusy(true);
     setError("");
     try {
       const data = await callApi("/api/delete", password, { id: photo.id });
       onChanged(data.photos);
     } catch (err) {
+      setConfirming(false);
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setBusy(false);
@@ -202,6 +258,9 @@ function PhotoCard({ photo, password, onChanged }: { photo: Photo; password: str
           {photo.category}
         </div>
         <div className="mt-1 mb-3 font-sans text-sm font-bold text-ivory">{photo.title}</div>
+        {confirming ? (
+          <DeleteConfirm label={`"${photo.title}"`} busy={busy} onConfirm={remove} onCancel={() => setConfirming(false)} />
+        ) : (
         <div className="flex gap-2">
           <label
             className={`flex-1 cursor-pointer rounded-full border border-white/15 py-2 text-center font-sans text-xs font-bold text-ivory transition-colors hover:bg-white/5 ${busy ? "pointer-events-none opacity-50" : ""}`}
@@ -210,13 +269,14 @@ function PhotoCard({ photo, password, onChanged }: { photo: Photo; password: str
             <input type="file" accept="image/*" onChange={replace} disabled={busy} className="hidden" />
           </label>
           <button
-            onClick={remove}
+            onClick={() => setConfirming(true)}
             disabled={busy}
             className="flex-1 rounded-full border border-white/15 py-2 font-sans text-xs font-bold text-red-400 transition-colors hover:bg-white/5 disabled:opacity-50"
           >
             Delete
           </button>
         </div>
+        )}
         {error && <p className="mt-2 font-sans text-xs text-red-400">{error}</p>}
       </div>
     </div>
@@ -233,6 +293,9 @@ function AddPhotoForm({ password, onChanged }: { password: string; onChanged: (p
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // React clears e.currentTarget once the handler yields, so keep the form
+    // now -- calling e.currentTarget.reset() after the upload threw (Bug 3).
+    const form = e.currentTarget;
     if (!file || !title.trim()) {
       setError("Add a title and choose a photo");
       return;
@@ -252,7 +315,7 @@ function AddPhotoForm({ password, onChanged }: { password: string; onChanged: (p
       setTitle("");
       setLocation("");
       setFile(null);
-      e.currentTarget.reset();
+      form.reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -273,9 +336,19 @@ function AddPhotoForm({ password, onChanged }: { password: string; onChanged: (p
         onChange={(e) => setTitle(e.target.value)}
         className={inputClass}
       />
-      <select value={category} onChange={(e) => setCategory(e.target.value as Category)} className={inputClass}>
-        <option>Exterior</option>
-        <option>Interior</option>
+      {/* color-scheme: dark makes the browser draw the open list dark too, and
+          explicit option colours keep both choices readable (Bug 4). */}
+      <select
+        value={category}
+        onChange={(e) => setCategory(e.target.value as Category)}
+        className={`${inputClass} [color-scheme:dark]`}
+      >
+        <option value="Exterior" className="bg-charcoal-2 text-ivory">
+          Exterior
+        </option>
+        <option value="Interior" className="bg-charcoal-2 text-ivory">
+          Interior
+        </option>
       </select>
       <input
         type="text"
@@ -359,8 +432,9 @@ function AddClientForm({ password, onChanged }: { password: string; onChanged: (
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
-    if (!file || !fields.name.trim()) {
-      setError("Add the client's name and choose a handover photo");
+    const invalid = validateClient(fields);
+    if (invalid || !file) {
+      setError(invalid || "Choose a handover photo");
       return;
     }
     setBusy(true);
@@ -450,12 +524,17 @@ function ClientCard({
   };
 
   const save = async () => {
+    const invalid = validateClient(fields);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     if (await run(fields)) setEditing(false);
   };
 
+  const [confirming, setConfirming] = useState(false);
   const remove = async () => {
-    if (!confirm(`Remove "${client.name}"? This can't be undone.`)) return;
-    await run({ action: "delete" });
+    if (!(await run({ action: "delete" }))) setConfirming(false);
   };
 
   const buttonClass =
@@ -476,6 +555,9 @@ function ClientCard({
             </p>
           </div>
         )}
+        {confirming ? (
+          <DeleteConfirm label={client.name} busy={busy} onConfirm={remove} onCancel={() => setConfirming(false)} />
+        ) : (
         <div className="flex gap-2">
           {editing ? (
             <>
@@ -502,12 +584,13 @@ function ClientCard({
                 Photo
                 <input type="file" accept="image/*" onChange={replacePhoto} disabled={busy} className="hidden" />
               </label>
-              <button onClick={remove} disabled={busy} className={`${buttonClass} text-red-400`}>
+              <button onClick={() => setConfirming(true)} disabled={busy} className={`${buttonClass} text-red-400`}>
                 Delete
               </button>
             </>
           )}
         </div>
+        )}
         {error && <p className="font-sans text-xs text-red-400">{error}</p>}
       </div>
     </div>
