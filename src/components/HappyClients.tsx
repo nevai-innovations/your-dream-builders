@@ -229,13 +229,6 @@ export default function HappyClients() {
                   <span className="mt-0.5 block font-sans text-[11px] text-ivory-dim">{client.location}</span>
                 )}
               </span>
-              <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-charcoal/70 px-2.5 py-1 font-sans text-[9px] font-semibold uppercase tracking-[0.2em] text-ivory backdrop-blur-md">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden className="text-brand-sky">
-                  <circle cx="8" cy="15" r="4" stroke="currentColor" strokeWidth="2" />
-                  <path d="m10.8 12.2 8.7-8.7M16 7l2.5 2.5M14 9l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                Key Handover
-              </span>
               {/* darkens cards as they angle away towards the screen edges */}
               <span aria-hidden className="stream-shade pointer-events-none absolute inset-0 bg-charcoal" />
             </button>
