@@ -1,119 +1,233 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import ScrollTrigger from "gsap/ScrollTrigger";
 import { useWorkPhotos } from "../lib/useWorkPhotos";
 import Lightbox from "./Lightbox";
 
-const TILTS = [-6, 4, -3, 7, -5, 2, -8, 5];
+gsap.registerPlugin(ScrollTrigger);
 
-function splitIntoColumns<T>(items: T[], columns: number) {
-  const cols: T[][] = Array.from({ length: columns }, () => []);
-  items.forEach((item, i) => cols[i % columns].push(item));
-  return cols;
+/*
+ * 3D fly-through: photos are spaced out along the z-axis inside a sticky,
+ * full-screen stage, and scrolling moves the "camera" forward through them.
+ * Each photo starts small in the distance, grows as it approaches, and sweeps
+ * past the viewer to one side. The page never pins -- the section is simply
+ * tall, and the stage is position: sticky inside it.
+ */
+const SPACING = 650; // px between photos along z
+const START = 900; // how far back the first photo sits when the section begins
+const FAR = -3800; // photos further away than this are hidden
+const FADE_IN = 900; // ...and fade in over this distance
+const NEAR = 620; // photos fade out as they reach this (perspective is 1000px)
+const SCROLL_PER_PHOTO = 26; // vh of scrolling per photo
+
+// Where each photo flies past: side of the screen and vertical lane.
+const LANES = [
+  { x: -1, y: -0.3 },
+  { x: 1, y: 0.25 },
+  { x: -1, y: 0.35 },
+  { x: 1, y: -0.35 },
+  { x: -1, y: 0.02 },
+  { x: 1, y: 0.05 },
+];
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return reduced;
 }
 
 export default function WorkGallery() {
   const workImages = useWorkPhotos();
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const hasImages = workImages.length > 0;
-  const columnCount = 3;
+  const total = workImages.length;
+  const reducedMotion = usePrefersReducedMotion();
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  // Each column holds [globalIndex, src] pairs so a click can open the right photo in the lightbox.
-  const columns = useMemo(() => {
-    const withIndex = workImages.map((src, i) => [i, src] as const);
-    return hasImages
-      ? splitIntoColumns(withIndex, columnCount)
-      : Array.from({ length: columnCount }, () => Array.from({ length: 3 }, (_, i) => [i, null] as const));
-  }, [workImages, hasImages]);
+  const tunnelRef = useRef<HTMLDivElement>(null);
+  const hintRef = useRef<HTMLDivElement>(null);
+
+  // Keyed on the photo list: the live CMS photos replace the bundled fallback
+  // after load, and the new elements need wiring up.
+  const photosKey = workImages.join("\n");
+
+  useEffect(() => {
+    const tunnel = tunnelRef.current;
+    if (!tunnel || reducedMotion || total === 0) return;
+
+    const cards = gsap.utils.toArray<HTMLElement>(".fly-card", tunnel);
+    const shades = cards.map((c) => c.querySelector<HTMLElement>(".fly-shade"));
+
+    const travel = (total - 1) * SPACING + START + NEAR;
+
+    const render = (progress: number) => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const mobile = w < 768;
+      // how far off-centre each lane sits, in px at z = 0
+      const spreadX = mobile ? w * 0.28 : Math.min(w * 0.34, 720);
+      const spreadY = h * (mobile ? 0.22 : 0.3);
+      const camera = progress * travel;
+
+      cards.forEach((card, i) => {
+        const lane = LANES[i % LANES.length];
+        const z = -START - i * SPACING + camera;
+        const visible = z > FAR && z < NEAR;
+        const opacity = visible ? Math.min(clamp01((z - FAR) / FADE_IN), clamp01((NEAR - z) / 260)) : 0;
+
+        card.style.opacity = String(opacity);
+        card.style.visibility = visible ? "visible" : "hidden";
+        // only the photos close enough to read are clickable
+        card.style.pointerEvents = z > -1800 && z < NEAR - 200 ? "auto" : "none";
+        // photos stay straight -- facing the viewer, no tilt or roll
+        card.style.transform = `translate(-50%, -50%) translate3d(${lane.x * spreadX}px, ${lane.y * spreadY}px, ${z}px)`;
+
+        const shade = shades[i];
+        if (shade) shade.style.opacity = String(clamp01(-z / 3200) * 0.75);
+      });
+
+      if (hintRef.current) hintRef.current.style.opacity = String(1 - clamp01(progress * 12));
+    };
+
+    const trigger = ScrollTrigger.create({
+      trigger: tunnel,
+      start: "top top",
+      end: "bottom bottom",
+      onUpdate: (self) => render(self.progress),
+      onRefresh: (self) => render(self.progress),
+    });
+    render(trigger.progress);
+
+    return () => trigger.kill();
+  }, [photosKey, total, reducedMotion]);
 
   return (
-    <section
-      id="work"
-      className="relative w-full overflow-hidden bg-gradient-to-b from-brand-navy via-charcoal-2 to-charcoal-2 py-24 md:py-32"
-    >
-      {/* giant backdrop wordmark, noozi-style */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 select-none text-center font-display text-[26vw] font-black uppercase leading-none text-white/[0.04]"
-      >
-        WORK
-      </div>
-
-      <div className="relative mx-auto mb-14 flex max-w-3xl flex-col items-center px-6 text-center">
-        <p className="font-sans text-xs font-semibold uppercase tracking-[0.35em] text-brand-sky/80">
-          Portfolio
-        </p>
-        <h2 className="mt-4 font-display text-6xl font-black uppercase leading-[0.9] tracking-tight text-ivory sm:text-7xl md:text-8xl">
-          Our <span className="text-gradient-brand">Work</span>
-        </h2>
-        <p className="mt-6 max-w-xl font-sans text-ivory-dim">
-          Villas, renovations and interiors delivered across Kerala. Tap any photo to take a closer look.
-        </p>
-      </div>
-
-      {/* auto-scrolling columns of tilted, clickable project photos */}
-      <div className="relative flex h-[75vh] gap-4 px-4 md:h-[85vh] md:gap-6 md:px-8">
-        {columns.map((col, colIndex) => (
-          <div key={colIndex} className="relative h-full flex-1 overflow-hidden">
-            <div
-              className={`flex flex-col gap-8 py-4 md:gap-10 ${
-                colIndex % 2 === 0 ? "animate-marquee-up" : "animate-marquee-down"
-              }`}
-            >
-              {[...col, ...col].map(([globalIndex, src], i) => {
-                const tilt = TILTS[(colIndex * 3 + i) % TILTS.length];
-                return (
-                  <button
-                    key={`${colIndex}-${i}`}
-                    type="button"
-                    data-cursor-hover
-                    disabled={!hasImages}
-                    onClick={() => setActiveIndex(globalIndex)}
-                    className="group block shrink-0 origin-center transition-transform duration-300 hover:z-10 hover:!rotate-0 hover:scale-105"
-                    style={{ transform: `rotate(${tilt}deg)` }}
-                  >
-                    {hasImages ? (
-                      <img
-                        src={src as string}
-                        alt="Your Dream Builders project"
-                        loading="lazy"
-                        className="h-64 w-56 rounded-2xl object-cover shadow-xl shadow-black/40 ring-1 ring-white/10 md:h-80 md:w-64"
-                      />
-                    ) : (
-                      <div className="flex h-64 w-56 items-center justify-center rounded-2xl border border-white/10 bg-white/5 font-display text-sm uppercase tracking-widest text-ivory-dim shadow-xl shadow-black/40 md:h-80 md:w-64">
-                        Project photo
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+    <section id="work" className="relative w-full bg-charcoal-2">
+      <div className="relative overflow-x-clip pt-24 md:pt-36">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-brand-blue/15 blur-[140px]"
+        />
+        <div className="relative mx-auto max-w-7xl px-4 md:px-8">
+          <div className="grid gap-8 md:grid-cols-[1.2fr_1fr] md:items-end">
+            <div>
+              <p className="font-sans text-xs font-semibold uppercase tracking-[0.35em] text-brand-sky/80">
+                Portfolio
+              </p>
+              <h2 className="mt-4 font-display text-6xl font-black uppercase leading-[0.88] tracking-tight text-ivory sm:text-7xl md:text-[8.5rem]">
+                Selected
+                <br />
+                <span className="text-gradient-brand">Work</span>
+              </h2>
+            </div>
+            <div className="border-t border-white/10 pt-6 md:pb-3">
+              <p className="max-w-sm font-sans text-sm leading-relaxed text-ivory-dim md:text-base">
+                Villas, renovations and interiors delivered across Pathanamthitta &mdash; each one designed, built and
+                finished by our own team.
+              </p>
             </div>
           </div>
-        ))}
-
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-charcoal-2 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-brand-navy/60 to-transparent" />
-
-        <a
-          href="#contact"
-          data-cursor-hover
-          className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-charcoal/80 px-8 py-4 font-sans text-sm font-semibold uppercase tracking-wide text-ivory shadow-2xl shadow-black/50 ring-1 ring-white/15 backdrop-blur-md transition-all hover:ring-brand-sky/60"
-        >
-          Check Out Our Work &rarr;
-        </a>
+        </div>
       </div>
 
-      {!hasImages && (
-        <p className="relative mx-auto mt-10 max-w-md px-6 text-center font-sans text-xs text-ivory-dim/70">
-          Drop project photos into <code className="text-brand-sky">src/assets/work/</code> and they’ll
-          appear here automatically, scrolling and clickable.
-        </p>
+      {total === 0 ? (
+        <div className="mx-auto my-24 flex h-72 max-w-7xl items-center justify-center rounded-3xl border border-white/10 bg-white/5 font-display text-sm uppercase tracking-widest text-ivory-dim">
+          Project photos coming soon
+        </div>
+      ) : reducedMotion ? (
+        // reduced motion: a calm, static grid instead of the fly-through
+        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 py-16 md:grid-cols-3 md:gap-4 md:px-8">
+          {workImages.map((src, i) => (
+            <button
+              key={src}
+              type="button"
+              aria-label={`Enlarge project ${i + 1}`}
+              onClick={() => setLightboxIndex(i)}
+              className="aspect-[4/5] overflow-hidden rounded-2xl ring-1 ring-white/10"
+            >
+              <img src={src} alt={`Your Dream Builders project ${i + 1}`} loading="lazy" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div ref={tunnelRef} className="relative" style={{ height: `${100 + total * SCROLL_PER_PHOTO}vh` }}>
+          <div className="sticky top-0 h-screen overflow-hidden [perspective:1000px]">
+            {/* depth glow: a pool of brand light at the vanishing point */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute left-1/2 top-1/2 h-[70vmin] w-[70vmin] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-blue/20 blur-[120px]"
+            />
+
+            {/* brand watermark, centred behind the photos as they fly past */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 flex select-none items-center justify-center text-center font-display font-black uppercase leading-[0.85] tracking-tight text-white/[0.1]"
+            >
+              <span className="text-[19vw] md:text-[12.5vw]">
+                Your Dream
+                <br />
+                Builders
+              </span>
+            </div>
+
+            <div className="absolute inset-0 [transform-style:preserve-3d]">
+              {workImages.map((src, i) => (
+                <button
+                  key={src}
+                  type="button"
+                  data-cursor-hover
+                  aria-label={`Enlarge project ${i + 1}`}
+                  onClick={() => setLightboxIndex(i)}
+                  className="fly-card group absolute left-1/2 top-1/2 aspect-[4/5] w-[80vw] overflow-hidden rounded-2xl bg-charcoal-3 opacity-0 shadow-[0_60px_120px_-30px_rgba(0,0,0,0.85)] ring-1 ring-white/15 will-change-transform md:w-[42vw] md:max-w-[780px] md:rounded-3xl"
+                >
+                  <img
+                    src={src}
+                    alt={`Your Dream Builders project ${i + 1}`}
+                    draggable={false}
+                    className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  />
+                  {/* darkens photos in the distance so the nearest ones pop */}
+                  <span aria-hidden className="fly-shade pointer-events-none absolute inset-0 bg-charcoal-2" />
+                </button>
+              ))}
+            </div>
+
+            <div
+              ref={hintRef}
+              className="pointer-events-none absolute inset-x-0 bottom-8 flex flex-col items-center gap-3 font-sans text-[10px] font-semibold uppercase tracking-[0.4em] text-ivory-dim"
+            >
+              Scroll to fly through
+              <span className="h-10 w-px animate-pulse bg-gradient-to-b from-brand-sky to-transparent" />
+            </div>
+          </div>
+        </div>
       )}
 
-      {hasImages && activeIndex !== null && (
+      {total > 0 && (
+        <div className="relative flex justify-center px-4 pb-24 pt-8 md:pb-32">
+          <a
+            href="#contact"
+            data-cursor-hover
+            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-sky to-brand-blue px-8 py-4 font-sans text-sm font-semibold uppercase tracking-wide text-charcoal transition-transform hover:scale-105"
+          >
+            Start your project <span aria-hidden>&rarr;</span>
+          </a>
+        </div>
+      )}
+
+      {lightboxIndex !== null && (
         <Lightbox
           images={workImages}
-          index={activeIndex}
-          onClose={() => setActiveIndex(null)}
-          onNavigate={setActiveIndex}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
         />
       )}
     </section>

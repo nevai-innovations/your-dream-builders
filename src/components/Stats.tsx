@@ -1,13 +1,14 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import ScrollTrigger from "gsap/ScrollTrigger";
+import { BUSINESS, yearsExperience } from "../data/business";
 
 gsap.registerPlugin(ScrollTrigger);
 
+// Real figures from the client questionnaire (see data/business.ts).
 const STATS = [
-  { value: 60, suffix: "+", label: "Projects Delivered" },
-  { value: 8, suffix: "+", label: "Years Experience" },
-  { value: 50, suffix: "+", label: "Happy Clients" },
+  { value: BUSINESS.projectsCompleted, suffix: "+", label: "Projects Completed" },
+  { value: yearsExperience, suffix: "+", label: "Years Experience" },
 ];
 
 export default function Stats() {
@@ -51,7 +52,7 @@ export default function Stats() {
       ref={sectionRef}
       className="relative w-full bg-gradient-to-br from-brand-navy via-brand-deep to-brand-blue py-24"
     >
-      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-12 px-6 text-center sm:grid-cols-3">
+      <div className="mx-auto grid max-w-3xl grid-cols-1 gap-12 px-6 text-center sm:grid-cols-2">
         {STATS.map((stat) => (
           <div key={stat.label} className="stat-item">
             <div className="font-display text-6xl font-black text-white md:text-7xl">

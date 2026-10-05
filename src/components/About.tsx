@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
+import { BUSINESS } from "../data/business";
 import ScrollTrigger from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -28,7 +29,7 @@ export default function About() {
     <section id="about" ref={sectionRef} className="relative w-full bg-charcoal py-28 md:py-36">
       <div className="mx-auto max-w-6xl px-6">
         <p className="about-reveal font-sans text-xs font-semibold uppercase tracking-[0.35em] text-brand-sky/80">
-          Est. 2018 &mdash; Your Dream Builders
+          Est. {BUSINESS.established} &mdash; Your Dream Builders
         </p>
         <p className="about-reveal mt-2 font-sans text-xs uppercase tracking-[0.3em] text-ivory-dim">
           Design &bull; Construction &bull; Renovation
@@ -44,7 +45,7 @@ export default function About() {
 
         <p className="about-reveal mt-10 max-w-2xl font-sans text-base leading-relaxed text-ivory-dim md:text-lg">
           For Your Dream Builders, construction meets craftsmanship to turn ideas into places people love to
-          live in. Based in Kerala, we specialize in end-to-end design, construction and renovation for
+          live in. Based in Ranni Perunad, Pathanamthitta, we specialize in end-to-end design, construction and renovation for
           homeowners who want quality they can see and trust they can rely on. We work with families,
           landowners and ambitious homeowners who want a building partner that treats every project like it
           were our own. Our focus is simple: build spaces that are structurally sound, beautifully finished,

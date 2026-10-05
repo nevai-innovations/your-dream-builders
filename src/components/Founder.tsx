@@ -57,7 +57,7 @@ export default function Founder() {
           <p className="founder-reveal mt-8 max-w-xl font-sans text-base leading-relaxed text-ivory-dim md:text-lg">
             Aswin founded Your Dream Builders on a simple promise — every home should be built with the same
             care the family living in it deserves. Under his leadership, the studio has grown into a trusted
-            design-and-build partner across Kerala, recognized for quality construction and dependable
+            design-and-build partner across Pathanamthitta district, recognized for quality construction and dependable
             delivery.
           </p>
 

@@ -64,7 +64,7 @@ export default function Services() {
             <div
               key={service.n}
               data-cursor-hover
-              className="service-row group grid grid-cols-[auto_1fr] items-start gap-6 py-8 transition-colors hover:bg-white/[0.03] sm:grid-cols-[80px_1fr_auto] sm:items-center md:py-10"
+              className="service-row group grid grid-cols-[auto_1fr] items-start gap-6 py-8 transition-colors hover:bg-white/[0.03] sm:grid-cols-[80px_1fr] sm:items-center md:py-10"
             >
               <span className="font-display text-3xl font-bold text-brand-sky/60 md:text-4xl">
                 {service.n}
@@ -75,9 +75,6 @@ export default function Services() {
                 </h3>
                 <p className="mt-2 max-w-xl font-sans text-sm text-ivory-dim md:text-base">{service.desc}</p>
               </div>
-              <span className="col-span-2 mt-2 font-sans text-sm font-semibold uppercase tracking-wide text-brand-sky opacity-0 transition-opacity group-hover:opacity-100 sm:col-span-1 sm:mt-0">
-                Learn More &rarr;
-              </span>
             </div>
           ))}
         </div>

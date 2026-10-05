@@ -1,3 +1,5 @@
+import { BUSINESS, whatsappUrl } from "../data/business";
+
 export default function CTA() {
   return (
     <section id="contact" className="relative flex min-h-[80vh] w-full items-center justify-center overflow-hidden bg-charcoal">
@@ -21,11 +23,13 @@ export default function CTA() {
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
           <a
-            href="#footer-contact"
+            href={whatsappUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             data-cursor-hover
             className="rounded-full bg-charcoal-3 px-8 py-4 font-sans text-sm font-semibold uppercase tracking-wide text-ivory transition-transform hover:scale-105"
           >
-            Start a Project
+            Start a Project on WhatsApp
           </a>
           <a
             href="#work"
@@ -35,6 +39,17 @@ export default function CTA() {
             View Our Work &rarr;
           </a>
         </div>
+        <p className="mt-8 font-sans text-sm text-ivory-dim">
+          Or call us:{" "}
+          {BUSINESS.phones.map((phone, i) => (
+            <span key={phone.tel}>
+              {i > 0 && " · "}
+              <a href={`tel:${phone.tel}`} data-cursor-hover className="font-semibold text-ivory hover:text-brand-sky">
+                {phone.display}
+              </a>
+            </span>
+          ))}
+        </p>
       </div>
     </section>
   );
