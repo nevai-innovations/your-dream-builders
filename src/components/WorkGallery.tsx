@@ -129,8 +129,8 @@ export default function WorkGallery() {
             </div>
             <div className="border-t border-white/10 pt-6 md:pb-3">
               <p className="max-w-sm font-sans text-sm leading-relaxed text-ivory-dim md:text-base">
-                Villas, renovations and interiors delivered across Pathanamthitta &mdash; each one designed, built and
-                finished by our own team.
+                We aspire to create homes and spaces that stand the test of time while building relationships
+                that last even longer.
               </p>
             </div>
           </div>

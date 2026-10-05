@@ -18,8 +18,8 @@ export default function CTA() {
           Let&rsquo;s Build <span className="text-gradient-brand">Your Dream</span>
         </h2>
         <p className="mt-6 max-w-xl font-sans text-ivory-dim md:text-lg">
-          Whether it&rsquo;s a new home, a full renovation, or an interior refresh — tell us about your
-          project and we&rsquo;ll help you plan it right, end to end.
+          From the first discussion and design to construction and final handover, we maintain transparency,
+          clear communication, and genuine commitment to our clients.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
           <a

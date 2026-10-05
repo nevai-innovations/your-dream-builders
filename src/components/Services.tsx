@@ -4,32 +4,17 @@ import ScrollTrigger from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
 
+// The client's own service list, exactly as it appears in their Instagram posts.
 const SERVICES = [
-  {
-    n: "01",
-    title: "Architectural Design",
-    desc: "Thoughtful floor plans and elevations that balance light, space and your family's way of living.",
-  },
-  {
-    n: "02",
-    title: "Residential Construction",
-    desc: "Full-scale villa and home construction, managed from foundation to handover with quality checks at every stage.",
-  },
-  {
-    n: "03",
-    title: "Renovation & Remodeling",
-    desc: "Reworking existing homes — structural, cosmetic or complete — without losing what you love about the space.",
-  },
-  {
-    n: "04",
-    title: "Interior Design",
-    desc: "Custom kitchens, staircases, ceilings and furnishing that carry the design language through every room.",
-  },
-  {
-    n: "05",
-    title: "Project Consultancy",
-    desc: "Budgeting, permits and material guidance for landowners who want an honest partner before ground-breaking.",
-  },
+  "Architectural Design",
+  "Land Development",
+  "Project Management",
+  "Technical Advice",
+  "Residential Building",
+  "Commercial Building",
+  "Building Renovation",
+  "Structural",
+  "Interior",
 ];
 
 export default function Services() {
@@ -59,22 +44,18 @@ export default function Services() {
           Our Services
         </h2>
 
-        <div className="mt-16 divide-y divide-white/10 border-t border-white/10">
-          {SERVICES.map((service) => (
+        <div className="mt-16 grid border-t border-white/10 sm:grid-cols-2 lg:grid-cols-3">
+          {SERVICES.map((service, i) => (
             <div
-              key={service.n}
-              data-cursor-hover
-              className="service-row group grid grid-cols-[auto_1fr] items-start gap-6 py-8 transition-colors hover:bg-white/[0.03] sm:grid-cols-[80px_1fr] sm:items-center md:py-10"
+              key={service}
+              className="service-row flex items-center gap-6 border-b border-white/10 py-7 transition-colors hover:bg-white/[0.03] sm:px-2 md:py-9"
             >
               <span className="font-display text-3xl font-bold text-brand-sky/60 md:text-4xl">
-                {service.n}
+                {String(i + 1).padStart(2, "0")}
               </span>
-              <div>
-                <h3 className="font-display text-2xl font-bold uppercase tracking-tight text-ivory md:text-3xl">
-                  {service.title}
-                </h3>
-                <p className="mt-2 max-w-xl font-sans text-sm text-ivory-dim md:text-base">{service.desc}</p>
-              </div>
+              <h3 className="font-display text-2xl font-bold uppercase tracking-tight text-ivory md:text-3xl">
+                {service}
+              </h3>
             </div>
           ))}
         </div>

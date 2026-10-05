@@ -16,8 +16,9 @@ export default function Footer() {
             </span>
           )}
           <p className="mt-4 font-sans text-sm text-ivory-dim">
-            Design &bull; Construction &bull; Renovation, based in Ranni Perunad, Pathanamthitta — building
-            homes people are proud to live in.
+            YOUR DREAM &mdash; Design &bull; Construction &bull; Renovation.
+            <br />
+            Building Trust with Quality Work.
           </p>
 
           <div className="mt-6 flex gap-3">

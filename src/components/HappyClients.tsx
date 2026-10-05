@@ -250,7 +250,8 @@ export default function HappyClients() {
             Happy <span className="text-gradient-brand">Clients</span>
           </h2>
           <p className="mt-6 max-w-xl font-sans text-ivory-dim md:text-lg">
-            The best moment of every project &mdash; handing over the keys to a family&rsquo;s new home.
+            For us, the true measure of a successful project is not simply the completion of construction&mdash;it
+            is the smile on our client&rsquo;s face at the time of handover.
           </p>
         </div>
 

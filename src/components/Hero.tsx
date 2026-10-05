@@ -92,8 +92,7 @@ export default function Hero() {
         </h1>
 
         <p className="hero-sub mt-6 max-w-xl font-sans text-base text-ivory-dim md:text-lg">
-          From first sketch to final handover — Your Dream Builders designs, constructs and renovates spaces
-          across Pathanamthitta that are built to last and made to feel like home.
+          Building Trust with Quality Work. We&rsquo;ll get the job done!
         </p>
 
         <div className="hero-cta mt-8 flex flex-wrap items-center justify-center gap-4">
