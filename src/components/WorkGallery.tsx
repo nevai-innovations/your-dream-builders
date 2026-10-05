@@ -20,6 +20,19 @@ const FADE_IN = 900; // ...and fade in over this distance
 const NEAR = 620; // photos fade out as they reach this (perspective is 1000px)
 const SCROLL_PER_PHOTO = 26; // vh of scrolling per photo
 
+// Phones get their own tuning: one photo at a time, flying straight at the
+// viewer down the middle. The numbers keep every photo fully on screen while
+// visible (72vw at its focus point, gone before it grows past ~86vw) and make
+// the next photo appear only once the previous one has faded out.
+const MOBILE = {
+  spacing: 700,
+  start: 600,
+  appearAt: -520, // starts fading in here...
+  fadeIn: 220, // ...fully visible from -300 to its focus point (z = 0)
+  fadeOut: 160, // then fades out as it comes closer
+  scrollPerPhoto: 40, // vh -- a little longer with each photo
+};
+
 // Where each photo flies past: side of the screen and vertical lane.
 const LANES = [
   { x: -1, y: -0.3 },
@@ -52,6 +65,15 @@ export default function WorkGallery() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const tunnelRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const onChange = () => setIsMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   const hintRef = useRef<HTMLDivElement>(null);
 
   // Keyed on the photo list: the live CMS photos replace the bundled fallback
@@ -65,15 +87,34 @@ export default function WorkGallery() {
     const cards = gsap.utils.toArray<HTMLElement>(".fly-card", tunnel);
     const shades = cards.map((c) => c.querySelector<HTMLElement>(".fly-shade"));
 
-    const travel = (total - 1) * SPACING + START + NEAR;
-
     const render = (progress: number) => {
       const w = window.innerWidth;
       const h = window.innerHeight;
       const mobile = w < 768;
+
+      if (mobile) {
+        const camera = progress * ((total - 1) * MOBILE.spacing + MOBILE.start + MOBILE.fadeOut);
+        cards.forEach((card, i) => {
+          const z = -MOBILE.start - i * MOBILE.spacing + camera;
+          const opacity =
+            z <= 0
+              ? clamp01((z - MOBILE.appearAt) / MOBILE.fadeIn)
+              : clamp01(1 - z / MOBILE.fadeOut);
+          card.style.opacity = String(opacity);
+          card.style.visibility = opacity > 0 ? "visible" : "hidden";
+          card.style.pointerEvents = opacity > 0.6 ? "auto" : "none";
+          card.style.transform = `translate(-50%, -50%) translate3d(0px, 0px, ${z}px)`;
+          const shade = shades[i];
+          if (shade) shade.style.opacity = "0";
+        });
+        if (hintRef.current) hintRef.current.style.opacity = String(1 - clamp01(progress * 12));
+        return;
+      }
+
+      const travel = (total - 1) * SPACING + START + NEAR;
       // how far off-centre each lane sits, in px at z = 0
-      const spreadX = mobile ? w * 0.28 : Math.min(w * 0.34, 720);
-      const spreadY = h * (mobile ? 0.22 : 0.3);
+      const spreadX = Math.min(w * 0.34, 720);
+      const spreadY = h * 0.3;
       const camera = progress * travel;
 
       cards.forEach((card, i) => {
@@ -157,8 +198,8 @@ export default function WorkGallery() {
           ))}
         </div>
       ) : (
-        <div ref={tunnelRef} className="relative" style={{ height: `${100 + total * SCROLL_PER_PHOTO}vh` }}>
-          <div className="sticky top-0 h-screen overflow-hidden [perspective:1000px]">
+        <div ref={tunnelRef} className="relative" style={{ height: `${100 + total * (isMobile ? MOBILE.scrollPerPhoto : SCROLL_PER_PHOTO)}vh` }}>
+          <div className="sticky top-0 h-svh overflow-hidden [perspective:1000px]">
             {/* depth glow: a pool of brand light at the vanishing point */}
             <div
               aria-hidden
@@ -185,7 +226,7 @@ export default function WorkGallery() {
                   data-cursor-hover
                   aria-label={`Enlarge project ${i + 1}`}
                   onClick={() => setLightboxIndex(i)}
-                  className="fly-card group absolute left-1/2 top-1/2 aspect-[4/5] w-[80vw] overflow-hidden rounded-2xl bg-charcoal-3 opacity-0 shadow-[0_60px_120px_-30px_rgba(0,0,0,0.85)] ring-1 ring-white/15 will-change-transform md:w-[42vw] md:max-w-[780px] md:rounded-3xl"
+                  className="fly-card group absolute left-1/2 top-1/2 aspect-[4/5] w-[72vw] overflow-hidden rounded-2xl bg-charcoal-3 opacity-0 shadow-[0_60px_120px_-30px_rgba(0,0,0,0.85)] ring-1 ring-white/15 will-change-transform md:w-[42vw] md:max-w-[780px] md:rounded-3xl"
                 >
                   <img
                     src={src}
