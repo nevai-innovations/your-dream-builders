@@ -20,17 +20,19 @@ const FADE_IN = 900; // ...and fade in over this distance
 const NEAR = 620; // photos fade out as they reach this (perspective is 1000px)
 const SCROLL_PER_PHOTO = 26; // vh of scrolling per photo
 
-// Phones get their own tuning: one photo at a time, flying straight at the
-// viewer down the middle. The numbers keep every photo fully on screen while
-// visible (72vw at its focus point, gone before it grows past ~86vw) and make
-// the next photo appear only once the previous one has faded out.
+// Phones get their own motion: the photos form a stack down the middle of the
+// screen. The front photo comes towards you, holds at full size (72vw) so it
+// can be looked at, then slides up off the top, uncovering the next one, which
+// was already growing behind it. Photos leave by moving, never by fading, so
+// nothing blinks -- and since every photo shares the same shape and centre, the
+// smaller ones behind are always fully covered by the one in front.
 const MOBILE = {
-  spacing: 700,
-  start: 600,
-  appearAt: -520, // starts fading in here...
-  fadeIn: 220, // ...fully visible from -300 to its focus point (z = 0)
-  fadeOut: 160, // then fades out as it comes closer
-  scrollPerPhoto: 40, // vh -- a little longer with each photo
+  spacing: 700, // z distance between photos in the stack
+  start: 500, // how far back the first photo begins
+  hold: 250, // camera travel the front photo stays still at full size
+  exit: 400, // camera travel over which it slides up and away
+  depth: 2, // photos visible in the stack behind the front one
+  scrollPerPhoto: 40, // vh of scrolling per photo
 };
 
 // Where each photo flies past: side of the screen and vertical lane.
@@ -93,19 +95,25 @@ export default function WorkGallery() {
       const mobile = w < 768;
 
       if (mobile) {
-        const camera = progress * ((total - 1) * MOBILE.spacing + MOBILE.start + MOBILE.fadeOut);
+        const travel = (total - 1) * MOBILE.spacing + MOBILE.start + MOBILE.hold + MOBILE.exit;
+        const camera = progress * travel;
+        const cardH = cards[0]?.offsetHeight ?? 0;
         cards.forEach((card, i) => {
           const z = -MOBILE.start - i * MOBILE.spacing + camera;
-          const opacity =
-            z <= 0
-              ? clamp01((z - MOBILE.appearAt) / MOBILE.fadeIn)
-              : clamp01(1 - z / MOBILE.fadeOut);
+          // still approaching, holding at the front, or sliding away
+          const zShown = Math.min(z, 0);
+          const leaving = clamp01((z - MOBILE.hold) / MOBILE.exit);
+          const y = -leaving * leaving * (h / 2 + cardH / 2 + 60); // eases out of the top
+          const tooFar = -z > MOBILE.spacing * (MOBILE.depth + 0.5);
+          const gone = leaving >= 1;
+          // only the far end of the stack fades, so new photos appear gently
+          const opacity = gone || tooFar ? 0 : clamp01((MOBILE.spacing * (MOBILE.depth + 0.5) + z) / 300);
           card.style.opacity = String(opacity);
           card.style.visibility = opacity > 0 ? "visible" : "hidden";
-          card.style.pointerEvents = opacity > 0.6 ? "auto" : "none";
-          card.style.transform = `translate(-50%, -50%) translate3d(0px, 0px, ${z}px)`;
+          card.style.pointerEvents = z > -150 && leaving < 0.3 ? "auto" : "none";
+          card.style.transform = `translate(-50%, -50%) translate3d(0px, ${y}px, ${zShown}px)`;
           const shade = shades[i];
-          if (shade) shade.style.opacity = "0";
+          if (shade) shade.style.opacity = String(clamp01(-zShown / (MOBILE.spacing * 2)) * 0.6);
         });
         if (hintRef.current) hintRef.current.style.opacity = String(1 - clamp01(progress * 12));
         return;
