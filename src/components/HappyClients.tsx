@@ -33,6 +33,8 @@ export default function HappyClients() {
   const stageRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const hoveredRef = useRef(false);
+  // set when a drag/swipe moved the photos, so the release doesn't count as a click
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +107,8 @@ export default function HappyClients() {
   // Each one swings in depth as it goes -- angled in on the right, flat and
   // forward at the centre, angled away on the left -- for the 3D feel.
   // Pauses on hover, while off screen, and for reduced-motion users.
+  // Visitors can also drag / swipe the stream either way; a flick carries on
+  // with momentum before the steady motion takes over again.
   useEffect(() => {
     const track = trackRef.current;
     const stage = stageRef.current;
@@ -119,14 +123,73 @@ export default function HappyClients() {
     let last = performance.now();
     let lastCentre = -1;
     let raf = 0;
+    let velocity = 0; // px/s of leftover swipe momentum (positive = towards the left)
+    let drag: { x: number; t: number; startX: number } | null = null;
+    let lastWheel = 0; // last horizontal trackpad swipe, so auto-motion waits its turn
 
     const observer = new IntersectionObserver(([entry]) => (onScreen = entry.isIntersecting));
     observer.observe(stage);
 
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      drag = { x: e.clientX, t: performance.now(), startX: e.clientX };
+      velocity = 0;
+      suppressClickRef.current = false;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!drag) return;
+      const now = performance.now();
+      const dx = e.clientX - drag.x;
+      offset -= dx; // finger moves right -> photos move right
+      const dtMove = Math.max(1, now - drag.t) / 1000;
+      velocity = 0.8 * velocity + 0.2 * (-dx / dtMove); // smoothed, for the flick on release
+      drag.x = e.clientX;
+      drag.t = now;
+      if (Math.abs(e.clientX - drag.startX) > 6) {
+        suppressClickRef.current = true;
+        stage.style.cursor = "grabbing";
+      }
+    };
+    const onUp = () => {
+      if (!drag) return;
+      // a pause before letting go means no flick
+      if (performance.now() - drag.t > 80) velocity = 0;
+      drag = null;
+      stage.style.cursor = "";
+    };
+    // Trackpad two-finger swipes (and shift+wheel) arrive as horizontal wheel
+    // events, not pointer drags. Take only the sideways ones -- vertical wheel
+    // keeps scrolling the page -- and stop them reaching the page/browser, which
+    // would otherwise treat a sideways swipe as "go back".
+    const onWheel = (e: WheelEvent) => {
+      const dx = e.deltaX || (e.shiftKey ? e.deltaY : 0);
+      if (Math.abs(dx) <= Math.abs(e.shiftKey ? 0 : e.deltaY)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      offset += dx; // swipe left -> photos move left
+      velocity = 0;
+      lastWheel = performance.now();
+    };
+
+    stage.addEventListener("pointerdown", onDown);
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      if (onScreen && !hoveredRef.current && !reduced) offset = (offset + SPEED * dt) % loop;
+      const swiping = now - lastWheel < 700;
+      if (!drag && !swiping) {
+        // swipe momentum, easing out
+        offset += velocity * dt;
+        velocity *= Math.exp(-3.5 * dt);
+        if (Math.abs(velocity) < 5) velocity = 0;
+        // steady right-to-left motion once the momentum has died down
+        if (onScreen && !hoveredRef.current && !reduced && Math.abs(velocity) < SPEED) offset += SPEED * dt;
+      }
+      offset = ((offset % loop) + loop) % loop;
 
       let centre = 0;
       let nearest = Infinity;
@@ -159,6 +222,11 @@ export default function HappyClients() {
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
+      stage.removeEventListener("pointerdown", onDown);
+      stage.removeEventListener("wheel", onWheel);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
   }, [slots, spacing, loop, viewW, count]);
 
@@ -191,14 +259,16 @@ export default function HappyClients() {
       {/* handover photos streaming right to left, with 3D depth */}
       <div
         ref={stageRef}
-        className="client-reveal relative mt-14 select-none md:mt-20"
+        className="client-reveal relative mt-14 cursor-grab select-none [touch-action:pan-y] md:mt-20"
         style={{ height: cardW * CARD_RATIO + 80, perspective: 1600 }}
         onPointerEnter={(e) => e.pointerType === "mouse" && (hoveredRef.current = true)}
         onPointerLeave={() => (hoveredRef.current = false)}
       >
         <div
           ref={trackRef}
-          className="absolute inset-0 [transform-style:preserve-3d]"
+          // pointer-events-none: in 3D this layer's own plane sits in front of the
+          // receding photos and would swallow their clicks (the cards opt back in)
+          className="pointer-events-none absolute inset-0 [transform-style:preserve-3d]"
         >
           {stream.map((client, i) => (
             <button
@@ -206,8 +276,14 @@ export default function HappyClients() {
               type="button"
               data-cursor-hover
               aria-label={`Enlarge handover photo: ${client.name}`}
-              onClick={() => setLightboxIndex(i % count)}
-              className="stream-card group absolute left-1/2 top-1/2 overflow-hidden rounded-3xl bg-charcoal-2 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10 will-change-transform"
+              onClick={() => {
+                if (suppressClickRef.current) {
+                  suppressClickRef.current = false;
+                  return;
+                }
+                setLightboxIndex(i % count);
+              }}
+              className="stream-card group pointer-events-auto absolute left-1/2 top-1/2 overflow-hidden rounded-3xl bg-charcoal-2 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10 will-change-transform"
               style={{
                 width: cardW,
                 height: cardW * CARD_RATIO,
