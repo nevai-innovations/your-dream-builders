@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import ScrollTrigger from "gsap/ScrollTrigger";
 import { founderImage } from "../data/media";
@@ -8,8 +8,41 @@ gsap.registerPlugin(ScrollTrigger);
 
 const AWARDS = ["Mangalam Shreshtakarma Award", "Best Emerging Builder in Kerala"];
 
+/**
+ * The founder photo can be replaced from the /update page. Until we know
+ * whether one was uploaded, show nothing rather than flashing the built-in
+ * photo; fall back to the built-in one if none was set or the API is down.
+ */
+function useFounderPhoto(): string | undefined | null {
+  // undefined = still checking, null = no photo at all
+  const [photo, setPhoto] = useState<string | undefined | null>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/founder", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data: { url: string | null }) => !cancelled && setPhoto(data.url || founderImage || null))
+        .catch(() => !cancelled && setPhoto((p) => p ?? founderImage ?? null));
+    };
+    load();
+    // pick up a change made in /update when the visitor comes back to the tab
+    const onVisible = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, []);
+
+  return photo;
+}
+
 export default function Founder() {
   const sectionRef = useRef<HTMLDivElement>(null);
+  const photo = useFounderPhoto();
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -31,12 +64,10 @@ export default function Founder() {
         <div className="founder-reveal relative mx-auto w-full max-w-sm">
           <div className="absolute -inset-3 rounded-[2rem] bg-gradient-to-br from-brand-sky/30 to-brand-deep/20 blur-2xl" />
           <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5">
-            {founderImage ? (
-              <img
-                src={founderImage}
-                alt="Aswin Parackal Mohan"
-                className="aspect-[4/5] w-full object-cover"
-              />
+            {photo === undefined ? (
+              <div className="aspect-[4/5] w-full" />
+            ) : photo ? (
+              <img src={photo} alt="Aswin Parackal Mohan" className="aspect-[4/5] w-full object-cover" />
             ) : (
               <div className="flex aspect-[4/5] w-full items-center justify-center font-display text-sm uppercase tracking-widest text-ivory-dim">
                 Founder photo

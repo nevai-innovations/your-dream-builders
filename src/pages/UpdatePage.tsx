@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { logoImage } from "../data/media";
+import { logoImage, founderImage } from "../data/media";
 
 const PASSWORD_KEY = "ydb-update-password";
 
@@ -661,9 +661,118 @@ function SectionToggle({
   );
 }
 
+/** Founder & Managing Director photo: replace it, or go back to the built-in one. */
+function FounderPhotoPanel({ password }: { password: string }) {
+  // undefined = loading, null = using the site's built-in photo
+  const [url, setUrl] = useState<string | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmingReset, setConfirmingReset] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/founder", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { url: string | null }) => setUrl(data.url))
+      .catch(() => setUrl(null));
+  }, []);
+
+  const replace = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      const image = await prepareImage(file);
+      const data = await callApi("/api/founder", password, { imageBase64: image.base64, imageType: image.type });
+      setUrl(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+      input.value = "";
+    }
+  };
+
+  const reset = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await callApi("/api/founder", password, { action: "reset" });
+      setUrl(data.url);
+      setConfirmingReset(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const shown = url ?? founderImage;
+  const buttonClass =
+    "rounded-full border border-white/15 px-5 py-2.5 text-center font-sans text-xs font-bold transition-colors hover:bg-white/5 disabled:opacity-50";
+
+  return (
+    <div className="mx-auto grid max-w-3xl items-center gap-8 rounded-2xl border border-white/10 bg-charcoal-2 p-7 md:grid-cols-[220px_1fr]">
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+        {url === undefined ? (
+          <div className="aspect-[4/5] w-full" />
+        ) : shown ? (
+          <img src={shown} alt="Current founder photo" className="aspect-[4/5] w-full object-cover" />
+        ) : (
+          <div className="flex aspect-[4/5] w-full items-center justify-center font-sans text-xs text-ivory-dim">
+            No photo
+          </div>
+        )}
+      </div>
+      <div>
+        <h2 className="font-display text-xl font-bold uppercase tracking-tight text-ivory">Founder Photo</h2>
+        <p className="mt-1 font-sans text-sm text-ivory-dim">
+          Shown in the Founder &amp; Managing Director section.{" "}
+          {url ? "A custom photo is live." : "Currently the site's original photo."}
+        </p>
+        <p className="mt-3 font-sans text-xs text-ivory-dim/80">
+          Tip: a portrait (taller than wide) photo fits best &mdash; it&rsquo;s shown in a 4:5 frame.
+        </p>
+
+        {confirmingReset ? (
+          <div className="mt-5 rounded-xl border border-white/15 bg-white/[0.04] p-3">
+            <p className="font-sans text-xs text-ivory">Switch back to the site&rsquo;s original founder photo?</p>
+            <div className="mt-3 flex gap-2">
+              <button onClick={reset} disabled={busy} className={`${buttonClass} flex-1 text-brand-sky`}>
+                {busy ? "Switching…" : "Switch back"}
+              </button>
+              <button onClick={() => setConfirmingReset(false)} disabled={busy} className={`${buttonClass} flex-1 text-ivory`}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 flex flex-wrap gap-2">
+            <label
+              className={`cursor-pointer rounded-full bg-gradient-to-r from-brand-sky to-brand-blue px-5 py-2.5 font-sans text-xs font-bold text-charcoal transition-transform hover:scale-[1.02] ${
+                busy ? "pointer-events-none opacity-60" : ""
+              }`}
+            >
+              {busy ? "Uploading…" : "Replace photo"}
+              <input type="file" accept="image/*" onChange={replace} disabled={busy} className="hidden" />
+            </label>
+            {url && (
+              <button onClick={() => setConfirmingReset(true)} disabled={busy} className={`${buttonClass} text-ivory`}>
+                Use original photo
+              </button>
+            )}
+          </div>
+        )}
+        {error && <p className="mt-3 font-sans text-xs text-red-400">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
 export default function UpdatePage() {
   const [password, setPassword] = useState(() => sessionStorage.getItem(PASSWORD_KEY) || "");
-  const [tab, setTab] = useState<"work" | "clients">("work");
+  const [tab, setTab] = useState<"work" | "clients" | "founder">("work");
   const [photos, setPhotos] = useState<Photo[] | null>(null);
   const [clients, setClients] = useState<Client[] | null>(null);
   const [clientsEnabled, setClientsEnabled] = useState(false);
@@ -723,9 +832,14 @@ export default function UpdatePage() {
           <button onClick={() => setTab("clients")} className={tabClass(tab === "clients")}>
             Happy Clients
           </button>
+          <button onClick={() => setTab("founder")} className={tabClass(tab === "founder")}>
+            Founder Photo
+          </button>
         </div>
 
-        {tab === "work" ? (
+        {tab === "founder" ? (
+          <FounderPhotoPanel password={password} />
+        ) : tab === "work" ? (
           <>
             <AddPhotoForm password={password} onChanged={setPhotos} />
             <div className="mt-10 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">

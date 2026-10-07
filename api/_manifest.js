@@ -64,7 +64,7 @@ export async function writeManifest(photos, path = MANIFEST_PATH) {
 // Small site-wide switches set from the /update page (e.g. whether the Happy
 // Clients section is shown). Stored as one JSON object, like the manifests.
 const SETTINGS_PATH = "site-settings.json";
-const DEFAULT_SETTINGS = { clientsEnabled: false };
+const DEFAULT_SETTINGS = { clientsEnabled: false, founderPhotoUrl: null };
 
 export async function readSettings() {
   const stored = await readManifest(SETTINGS_PATH);
