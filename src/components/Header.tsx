@@ -22,15 +22,14 @@ export default function Header() {
 
   return (
     <header className="fixed top-0 left-0 z-50 w-full pointer-events-none">
-      <div
-        className={`pointer-events-auto mx-auto flex max-w-7xl items-center justify-between px-6 py-4 transition-all duration-500 md:px-10 ${
-          scrolled ? "bg-charcoal/80 backdrop-blur-md shadow-lg shadow-black/20" : ""
+     <div
+  className={`pointer-events-auto mx-auto flex max-w-7xl items-center justify-between px-0 py-4 transition-all duration-500 md:px-0 ${      
+      scrolled ? "bg-charcoal/80 backdrop-blur-md shadow-lg shadow-black/20" : ""
         }`}
       >
-        <a href="#top" className="flex items-center gap-2" data-cursor-hover>
-          {logoImage ? (
-            <img src={logoImage} alt="Your Dream Builders" className="h-11 w-auto" />
-          ) : (
+<a href="#top" className="relative flex items-center gap-2 md:-left-44" data-cursor-hover>          {logoImage ? (
+<img src={logoImage} alt="Your Dream Builders" className="h-30 w-auto" />
+       ) : (
             <span className="font-display text-2xl font-black uppercase tracking-tight text-gradient-brand">
               Your Dream
             </span>
